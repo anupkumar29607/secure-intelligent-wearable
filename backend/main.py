@@ -1,4 +1,5 @@
 from fastapi import FastAPI, Depends
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from datetime import datetime
 from pydantic import BaseModel
@@ -6,10 +7,29 @@ from pydantic import BaseModel
 from database import Base, engine, SessionLocal
 from models import Incident
 
+
+# Create database tables
 Base.metadata.create_all(bind=engine)
 
+
+# Create FastAPI application
 app = FastAPI(
     title="Secure Intelligent Wearable API"
+)
+
+
+# CORS configuration for React/Vite frontend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 
@@ -60,11 +80,7 @@ def create_sos(
         .first()
     )
 
-    if last_incident:
-        next_number = last_incident.id + 1
-    else:
-        next_number = 1
-
+    next_number = last_incident.id + 1 if last_incident else 1
     incident_id = f"INC-{next_number:06d}"
 
     incident = Incident(
