@@ -1,122 +1,268 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
+import { useEffect, useState } from "react";
+import "./App.css";
 
 function App() {
-  const [count, setCount] = useState(0)
+  const [incident, setIncident] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  // Load existing incidents from the backend when the page opens
+  useEffect(() => {
+    const loadIncidents = async () => {
+      try {
+        const response = await fetch(
+          "http://127.0.0.1:8000/api/incidents"
+        );
+
+        if (!response.ok) {
+          throw new Error("Failed to load incidents");
+        }
+
+        const data = await response.json();
+
+        if (data.length > 0) {
+          const latest = data[data.length - 1];
+
+          setIncident({
+            success: true,
+            incident_id: latest.incident_id,
+            status: latest.status,
+          });
+        }
+      } catch (err) {
+        console.error("Failed to load incidents:", err);
+      }
+    };
+
+    loadIncidents();
+  }, []);
+
+  // Activate SOS
+  const activateSOS = async () => {
+    setLoading(true);
+    setError("");
+
+    try {
+      const response = await fetch(
+        "http://127.0.0.1:8000/api/incidents/sos",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            source: "DIGITAL_SIMULATOR",
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to activate SOS");
+      }
+
+      const data = await response.json();
+
+      setIncident(data);
+    } catch (err) {
+      setError(
+        "Unable to connect to backend. Make sure FastAPI is running."
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
+    <div className="app">
+      <header className="header">
         <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
-          </p>
+          <h1>Secure Intelligent Wearable</h1>
+          <p>Personal Safety & Emergency Response System</p>
         </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
 
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
+        <div className="device-status">
+          <span className="status-dot"></span>
+          Device Online
         </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
+      </header>
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
-  )
+      <main className="dashboard">
+
+        {/* Hero Section */}
+        <section className="hero-card">
+          <div>
+            <span className="badge">
+              SIH 2026 • DIGITAL PROTOTYPE
+            </span>
+
+            <h2>Emergency Response Dashboard</h2>
+
+            <p>
+              Monitor wearable status, emergency incidents, risk analysis,
+              location and evidence integrity from one dashboard.
+            </p>
+          </div>
+
+          <button
+            className="sos-button"
+            onClick={activateSOS}
+            disabled={loading}
+          >
+            {loading ? "ACTIVATING..." : "🚨 ACTIVATE SOS"}
+          </button>
+        </section>
+
+        {/* Error Message */}
+        {error && (
+          <div className="error-message">
+            {error}
+          </div>
+        )}
+
+        {/* SOS Alert */}
+        {incident && (
+          <section className="incident-alert">
+            <div>
+              <strong>🚨 SOS ACTIVATED</strong>
+
+              <p>
+                Incident ID: <b>{incident.incident_id}</b>
+              </p>
+            </div>
+
+            <span className="active-status">
+              {incident.status}
+            </span>
+          </section>
+        )}
+
+        {/* Statistics */}
+        <section className="stats-grid">
+
+          <div className="card">
+            <span>Device Status</span>
+            <strong>ONLINE</strong>
+            <small>[SIMULATED]</small>
+          </div>
+
+          <div className="card">
+            <span>Current Risk</span>
+            <strong>{incident ? "HIGH" : "LOW"}</strong>
+            <small>[SIMULATED]</small>
+          </div>
+
+          <div className="card">
+            <span>Location</span>
+            <strong>AVAILABLE</strong>
+            <small>[SIMULATED]</small>
+          </div>
+
+          <div className="card">
+            <span>Evidence</span>
+            <strong>READY</strong>
+            <small>[SIMULATED]</small>
+          </div>
+
+        </section>
+
+        {/* Main Content */}
+        <section className="content-grid">
+
+          {/* Latest Incident */}
+          <div className="panel">
+            <h3>Latest Incident</h3>
+
+            {incident ? (
+              <div className="incident-details">
+
+                <div className="empty-icon">
+                  🚨
+                </div>
+
+                <h4>Active Emergency</h4>
+
+                <p>
+                  <b>Incident:</b>{" "}
+                  {incident.incident_id}
+                </p>
+
+                <p>
+                  <b>Type:</b> SOS
+                </p>
+
+                <p>
+                  <b>Status:</b>{" "}
+                  {incident.status}
+                </p>
+
+                <p>
+                  <b>Source:</b>{" "}
+                  DIGITAL_SIMULATOR
+                </p>
+
+              </div>
+            ) : (
+              <div className="empty-state">
+
+                <div className="empty-icon">
+                  🛡️
+                </div>
+
+                <h4>No Active Incidents</h4>
+
+                <p>
+                  Emergency incidents created by the wearable
+                  will appear here.
+                </p>
+
+              </div>
+            )}
+          </div>
+
+          {/* System Pipeline */}
+          <div className="panel">
+
+            <h3>System Pipeline</h3>
+
+            <div className="pipeline">
+
+              <div>
+                Wearable Simulator
+              </div>
+
+              <span>↓</span>
+
+              <div>
+                FastAPI Backend
+              </div>
+
+              <span>↓</span>
+
+              <div>
+                Risk Analysis
+              </div>
+
+              <span>↓</span>
+
+              <div>
+                Evidence + Integrity
+              </div>
+
+              <span>↓</span>
+
+              <div>
+                Responder Dashboard
+              </div>
+
+            </div>
+
+          </div>
+
+        </section>
+
+      </main>
+    </div>
+  );
 }
 
-export default App
+export default App;
