@@ -2,7 +2,7 @@ from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from datetime import datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from database import Base, engine, SessionLocal
 from models import Incident
@@ -33,17 +33,36 @@ app.add_middleware(
 )
 
 
+# -----------------------------
+# Request Models
+# -----------------------------
+
 class SOSRequest(BaseModel):
     source: str
 
 
+class LocationRequest(BaseModel):
+    # Simulated GPS coordinates with validation
+    latitude: float = Field(..., ge=-90, le=90)
+    longitude: float = Field(..., ge=-180, le=180)
+
+
+# -----------------------------
+# Database Dependency
+# -----------------------------
+
 def get_db():
     db = SessionLocal()
+
     try:
         yield db
     finally:
         db.close()
 
+
+# -----------------------------
+# Root Endpoint
+# -----------------------------
 
 @app.get("/")
 def root():
@@ -52,8 +71,14 @@ def root():
     }
 
 
+# -----------------------------
+# Get All Incidents
+# -----------------------------
+
 @app.get("/api/incidents")
-def get_incidents(db: Session = Depends(get_db)):
+def get_incidents(
+    db: Session = Depends(get_db)
+):
     incidents = db.query(Incident).all()
 
     return [
@@ -63,11 +88,17 @@ def get_incidents(db: Session = Depends(get_db)):
             "type": incident.type,
             "status": incident.status,
             "source": incident.source,
-            "created_at": incident.created_at
+            "created_at": incident.created_at,
+            "latitude": incident.latitude,
+            "longitude": incident.longitude
         }
         for incident in incidents
     ]
 
+
+# -----------------------------
+# Create SOS Incident
+# -----------------------------
 
 @app.post("/api/incidents/sos")
 def create_sos(
@@ -80,7 +111,12 @@ def create_sos(
         .first()
     )
 
-    next_number = last_incident.id + 1 if last_incident else 1
+    next_number = (
+        last_incident.id + 1
+        if last_incident
+        else 1
+    )
+
     incident_id = f"INC-{next_number:06d}"
 
     incident = Incident(
@@ -99,4 +135,43 @@ def create_sos(
         "success": True,
         "incident_id": incident.incident_id,
         "status": incident.status
+    }
+
+
+# -----------------------------
+# Update Incident Location
+# -----------------------------
+
+@app.post("/api/incidents/{incident_id}/location")
+def update_location(
+    incident_id: str,
+    request: LocationRequest,
+    db: Session = Depends(get_db)
+):
+    incident = (
+        db.query(Incident)
+        .filter(
+            Incident.incident_id == incident_id
+        )
+        .first()
+    )
+
+    if not incident:
+        return {
+            "success": False,
+            "message": "Incident not found"
+        }
+
+    # Store simulated GPS coordinates
+    incident.latitude = request.latitude
+    incident.longitude = request.longitude
+
+    db.commit()
+    db.refresh(incident)
+
+    return {
+        "success": True,
+        "incident_id": incident.incident_id,
+        "latitude": incident.latitude,
+        "longitude": incident.longitude
     }
