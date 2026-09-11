@@ -3,12 +3,16 @@ import "./App.css";
 
 const API_URL = "http://127.0.0.1:8000";
 
+const SIMULATED_LATITUDE = 28.6139;
+const SIMULATED_LONGITUDE = 77.2090;
+
 function App() {
   const [incident, setIncident] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [motionLoading, setMotionLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // Load latest incident from backend
+  // Load latest incident
   useEffect(() => {
     const loadIncidents = async () => {
       try {
@@ -25,32 +29,23 @@ function App() {
         if (data.length > 0) {
           const latest = data[data.length - 1];
 
-          setIncident({
-            success: true,
-            incident_id: latest.incident_id,
-            type: latest.type,
-            status: latest.status,
-            source: latest.source,
-            created_at: latest.created_at,
-            latitude: latest.latitude,
-            longitude: latest.longitude,
-          });
+          setIncident(latest);
         }
       } catch (err) {
-        console.error("Failed to load incidents:", err);
+        console.error(err);
       }
     };
 
     loadIncidents();
   }, []);
 
-  // Activate SOS + automatically attach simulated GPS
+  // Create SOS + GPS automatically
   const activateSOS = async () => {
     setLoading(true);
     setError("");
 
     try {
-      // Step 1: Create SOS incident
+      // Create incident
       const sosResponse = await fetch(
         `${API_URL}/api/incidents/sos`,
         {
@@ -70,11 +65,7 @@ function App() {
 
       const sosData = await sosResponse.json();
 
-      // Step 2: Simulated GPS coordinates
-      const simulatedLatitude = 28.6139;
-      const simulatedLongitude = 77.2090;
-
-      // Step 3: Attach GPS to the new incident
+      // Attach simulated GPS
       const locationResponse = await fetch(
         `${API_URL}/api/incidents/${sosData.incident_id}/location`,
         {
@@ -83,8 +74,8 @@ function App() {
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
-            latitude: simulatedLatitude,
-            longitude: simulatedLongitude,
+            latitude: SIMULATED_LATITUDE,
+            longitude: SIMULATED_LONGITUDE,
           }),
         }
       );
@@ -95,17 +86,19 @@ function App() {
 
       const locationData = await locationResponse.json();
 
-      // Step 4: Update dashboard
       setIncident({
         ...sosData,
         type: "SOS",
         source: "DIGITAL_SIMULATOR",
         latitude: locationData.latitude,
         longitude: locationData.longitude,
+        acceleration: null,
+        gyro: null,
+        fall_detected: false,
       });
 
     } catch (err) {
-      console.error("Emergency request failed:", err);
+      console.error(err);
 
       setError(
         "Unable to complete emergency request. Make sure FastAPI is running."
@@ -114,6 +107,110 @@ function App() {
       setLoading(false);
     }
   };
+
+  // Simulate normal movement
+  const simulateNormalMotion = async () => {
+    if (!incident) {
+      setError("Activate SOS first.");
+      return;
+    }
+
+    setMotionLoading(true);
+    setError("");
+
+    try {
+      const response = await fetch(
+        `${API_URL}/api/incidents/${incident.incident_id}/motion`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            acceleration: 1.1,
+            gyro: 0.8,
+            fall_detected: false,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to send motion data");
+      }
+
+      const data = await response.json();
+
+      setIncident((previous) => ({
+        ...previous,
+        acceleration: data.acceleration,
+        gyro: data.gyro,
+        fall_detected: data.fall_detected,
+        risk_level: data.risk_level,
+        risk_reason: data.reason,
+      }));
+
+    } catch (err) {
+      console.error(err);
+      setError("Unable to send motion data.");
+    } finally {
+      setMotionLoading(false);
+    }
+  };
+
+  // Simulate fall detection
+  const simulateFall = async () => {
+    if (!incident) {
+      setError("Activate SOS first.");
+      return;
+    }
+
+    setMotionLoading(true);
+    setError("");
+
+    try {
+      const response = await fetch(
+        `${API_URL}/api/incidents/${incident.incident_id}/motion`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            acceleration: 8.7,
+            gyro: 4.2,
+            fall_detected: true,
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to send fall data");
+      }
+
+      const data = await response.json();
+
+      setIncident((previous) => ({
+        ...previous,
+        acceleration: data.acceleration,
+        gyro: data.gyro,
+        fall_detected: data.fall_detected,
+        risk_level: data.risk_level,
+        risk_reason: data.reason,
+      }));
+
+    } catch (err) {
+      console.error(err);
+      setError("Unable to send fall data.");
+    } finally {
+      setMotionLoading(false);
+    }
+  };
+
+  const hasLocation =
+    incident?.latitude !== null &&
+    incident?.latitude !== undefined &&
+    incident?.longitude !== null &&
+    incident?.longitude !== undefined;
 
   return (
     <div className="app">
@@ -135,9 +232,8 @@ function App() {
 
       <main className="dashboard">
 
-        {/* Hero Section */}
+        {/* Hero */}
         <section className="hero-card">
-
           <div>
             <span className="badge">
               SIH 2026 • DIGITAL PROTOTYPE
@@ -149,8 +245,8 @@ function App() {
 
             <p>
               Monitor wearable status, emergency incidents,
-              risk analysis, location and evidence integrity
-              from one dashboard.
+              risk analysis, location, motion sensors and
+              evidence integrity.
             </p>
           </div>
 
@@ -163,10 +259,9 @@ function App() {
               ? "ACTIVATING..."
               : "🚨 ACTIVATE SOS"}
           </button>
-
         </section>
 
-        {/* Error Message */}
+        {/* Error */}
         {error && (
           <div className="error-message">
             {error}
@@ -176,7 +271,6 @@ function App() {
         {/* SOS Alert */}
         {incident && (
           <section className="incident-alert">
-
             <div>
               <strong>
                 🚨 SOS ACTIVATED
@@ -191,7 +285,6 @@ function App() {
             <span className="active-status">
               {incident.status}
             </span>
-
           </section>
         )}
 
@@ -208,7 +301,11 @@ function App() {
             <span>Current Risk</span>
 
             <strong>
-              {incident ? "HIGH" : "LOW"}
+              {incident?.fall_detected
+                ? "HIGH"
+                : incident
+                  ? "HIGH"
+                  : "LOW"}
             </strong>
 
             <small>[SIMULATED]</small>
@@ -218,10 +315,7 @@ function App() {
             <span>Location</span>
 
             <strong>
-              {incident?.latitude !== null &&
-              incident?.latitude !== undefined &&
-              incident?.longitude !== null &&
-              incident?.longitude !== undefined
+              {hasLocation
                 ? `${incident.latitude}, ${incident.longitude}`
                 : "AVAILABLE"}
             </strong>
@@ -232,6 +326,102 @@ function App() {
           <div className="card">
             <span>Evidence</span>
             <strong>READY</strong>
+            <small>[SIMULATED]</small>
+          </div>
+
+        </section>
+
+        {/* Sensor Controls */}
+        <section className="panel sensor-panel">
+
+          <h3>
+            Wearable Sensor Simulation
+          </h3>
+
+          <p>
+            Simulate sensor events for testing the
+            emergency detection pipeline.
+          </p>
+
+          <div className="sensor-buttons">
+
+            <button
+              className="sensor-button"
+              onClick={simulateNormalMotion}
+              disabled={
+                motionLoading || !incident
+              }
+            >
+              {motionLoading
+                ? "PROCESSING..."
+                : "📡 NORMAL MOTION"}
+            </button>
+
+            <button
+              className="fall-button"
+              onClick={simulateFall}
+              disabled={
+                motionLoading || !incident
+              }
+            >
+              {motionLoading
+                ? "PROCESSING..."
+                : "⚠️ SIMULATE FALL"}
+            </button>
+
+          </div>
+
+        </section>
+
+        {/* Sensor Data */}
+        <section className="stats-grid">
+
+          <div className="card">
+            <span>Acceleration</span>
+
+            <strong>
+              {incident?.acceleration ??
+                "N/A"}
+            </strong>
+
+            <small>
+              m/s² [SIMULATED]
+            </small>
+          </div>
+
+          <div className="card">
+            <span>Gyroscope</span>
+
+            <strong>
+              {incident?.gyro ??
+                "N/A"}
+            </strong>
+
+            <small>
+              deg/s [SIMULATED]
+            </small>
+          </div>
+
+          <div className="card">
+            <span>Fall Detection</span>
+
+            <strong>
+              {incident?.fall_detected
+                ? "DETECTED"
+                : "NORMAL"}
+            </strong>
+
+            <small>[SIMULATED]</small>
+          </div>
+
+          <div className="card">
+            <span>Risk Reason</span>
+
+            <strong>
+              {incident?.risk_reason ??
+                "Awaiting sensor event"}
+            </strong>
+
             <small>[SIMULATED]</small>
           </div>
 
@@ -266,7 +456,7 @@ function App() {
 
                 <p>
                   <b>Type:</b>{" "}
-                  {incident.type || "SOS"}
+                  {incident.type}
                 </p>
 
                 <p>
@@ -276,8 +466,7 @@ function App() {
 
                 <p>
                   <b>Source:</b>{" "}
-                  {incident.source ||
-                    "DIGITAL_SIMULATOR"}
+                  {incident.source}
                 </p>
 
                 <p>
@@ -290,6 +479,25 @@ function App() {
                   <b>Longitude:</b>{" "}
                   {incident.longitude ??
                     "Not available"}
+                </p>
+
+                <p>
+                  <b>Acceleration:</b>{" "}
+                  {incident.acceleration ??
+                    "Not available"}
+                </p>
+
+                <p>
+                  <b>Gyroscope:</b>{" "}
+                  {incident.gyro ??
+                    "Not available"}
+                </p>
+
+                <p>
+                  <b>Fall:</b>{" "}
+                  {incident.fall_detected
+                    ? "DETECTED"
+                    : "Not detected"}
                 </p>
 
               </div>
@@ -317,7 +525,7 @@ function App() {
 
           </div>
 
-          {/* System Pipeline */}
+          {/* Pipeline */}
           <div className="panel">
 
             <h3>
@@ -339,13 +547,19 @@ function App() {
               <span>↓</span>
 
               <div>
-                FastAPI Backend
+                GPS Location
               </div>
 
               <span>↓</span>
 
               <div>
-                GPS Location
+                Motion Sensors
+              </div>
+
+              <span>↓</span>
+
+              <div>
+                Fall Detection
               </div>
 
               <span>↓</span>
