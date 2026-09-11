@@ -1,17 +1,19 @@
 import { useEffect, useState } from "react";
 import "./App.css";
 
+const API_URL = "http://127.0.0.1:8000";
+
 function App() {
   const [incident, setIncident] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // Load existing incidents from the backend when the page opens
+  // Load latest incident from backend
   useEffect(() => {
     const loadIncidents = async () => {
       try {
         const response = await fetch(
-          "http://127.0.0.1:8000/api/incidents"
+          `${API_URL}/api/incidents`
         );
 
         if (!response.ok) {
@@ -26,7 +28,12 @@ function App() {
           setIncident({
             success: true,
             incident_id: latest.incident_id,
+            type: latest.type,
             status: latest.status,
+            source: latest.source,
+            created_at: latest.created_at,
+            latitude: latest.latitude,
+            longitude: latest.longitude,
           });
         }
       } catch (err) {
@@ -37,14 +44,15 @@ function App() {
     loadIncidents();
   }, []);
 
-  // Activate SOS
+  // Activate SOS + automatically attach simulated GPS
   const activateSOS = async () => {
     setLoading(true);
     setError("");
 
     try {
-      const response = await fetch(
-        "http://127.0.0.1:8000/api/incidents/sos",
+      // Step 1: Create SOS incident
+      const sosResponse = await fetch(
+        `${API_URL}/api/incidents/sos`,
         {
           method: "POST",
           headers: {
@@ -56,16 +64,51 @@ function App() {
         }
       );
 
-      if (!response.ok) {
+      if (!sosResponse.ok) {
         throw new Error("Failed to activate SOS");
       }
 
-      const data = await response.json();
+      const sosData = await sosResponse.json();
 
-      setIncident(data);
+      // Step 2: Simulated GPS coordinates
+      const simulatedLatitude = 28.6139;
+      const simulatedLongitude = 77.2090;
+
+      // Step 3: Attach GPS to the new incident
+      const locationResponse = await fetch(
+        `${API_URL}/api/incidents/${sosData.incident_id}/location`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            latitude: simulatedLatitude,
+            longitude: simulatedLongitude,
+          }),
+        }
+      );
+
+      if (!locationResponse.ok) {
+        throw new Error("Failed to update location");
+      }
+
+      const locationData = await locationResponse.json();
+
+      // Step 4: Update dashboard
+      setIncident({
+        ...sosData,
+        type: "SOS",
+        source: "DIGITAL_SIMULATOR",
+        latitude: locationData.latitude,
+        longitude: locationData.longitude,
+      });
+
     } catch (err) {
+      console.error("Emergency request failed:", err);
+
       setError(
-        "Unable to connect to backend. Make sure FastAPI is running."
+        "Unable to complete emergency request. Make sure FastAPI is running."
       );
     } finally {
       setLoading(false);
@@ -74,10 +117,14 @@ function App() {
 
   return (
     <div className="app">
+
+      {/* Header */}
       <header className="header">
         <div>
           <h1>Secure Intelligent Wearable</h1>
-          <p>Personal Safety & Emergency Response System</p>
+          <p>
+            Personal Safety & Emergency Response System
+          </p>
         </div>
 
         <div className="device-status">
@@ -90,16 +137,20 @@ function App() {
 
         {/* Hero Section */}
         <section className="hero-card">
+
           <div>
             <span className="badge">
               SIH 2026 • DIGITAL PROTOTYPE
             </span>
 
-            <h2>Emergency Response Dashboard</h2>
+            <h2>
+              Emergency Response Dashboard
+            </h2>
 
             <p>
-              Monitor wearable status, emergency incidents, risk analysis,
-              location and evidence integrity from one dashboard.
+              Monitor wearable status, emergency incidents,
+              risk analysis, location and evidence integrity
+              from one dashboard.
             </p>
           </div>
 
@@ -108,8 +159,11 @@ function App() {
             onClick={activateSOS}
             disabled={loading}
           >
-            {loading ? "ACTIVATING..." : "🚨 ACTIVATE SOS"}
+            {loading
+              ? "ACTIVATING..."
+              : "🚨 ACTIVATE SOS"}
           </button>
+
         </section>
 
         {/* Error Message */}
@@ -122,17 +176,22 @@ function App() {
         {/* SOS Alert */}
         {incident && (
           <section className="incident-alert">
+
             <div>
-              <strong>🚨 SOS ACTIVATED</strong>
+              <strong>
+                🚨 SOS ACTIVATED
+              </strong>
 
               <p>
-                Incident ID: <b>{incident.incident_id}</b>
+                Incident ID:{" "}
+                <b>{incident.incident_id}</b>
               </p>
             </div>
 
             <span className="active-status">
               {incident.status}
             </span>
+
           </section>
         )}
 
@@ -147,14 +206,27 @@ function App() {
 
           <div className="card">
             <span>Current Risk</span>
-            <strong>{incident ? "HIGH" : "LOW"}</strong>
+
+            <strong>
+              {incident ? "HIGH" : "LOW"}
+            </strong>
+
             <small>[SIMULATED]</small>
           </div>
 
           <div className="card">
             <span>Location</span>
-            <strong>AVAILABLE</strong>
-            <small>[SIMULATED]</small>
+
+            <strong>
+              {incident?.latitude !== null &&
+              incident?.latitude !== undefined &&
+              incident?.longitude !== null &&
+              incident?.longitude !== undefined
+                ? `${incident.latitude}, ${incident.longitude}`
+                : "AVAILABLE"}
+            </strong>
+
+            <small>[SIMULATED GPS]</small>
           </div>
 
           <div className="card">
@@ -170,16 +242,22 @@ function App() {
 
           {/* Latest Incident */}
           <div className="panel">
-            <h3>Latest Incident</h3>
+
+            <h3>
+              Latest Incident
+            </h3>
 
             {incident ? (
+
               <div className="incident-details">
 
                 <div className="empty-icon">
                   🚨
                 </div>
 
-                <h4>Active Emergency</h4>
+                <h4>
+                  Active Emergency
+                </h4>
 
                 <p>
                   <b>Incident:</b>{" "}
@@ -187,7 +265,8 @@ function App() {
                 </p>
 
                 <p>
-                  <b>Type:</b> SOS
+                  <b>Type:</b>{" "}
+                  {incident.type || "SOS"}
                 </p>
 
                 <p>
@@ -197,32 +276,53 @@ function App() {
 
                 <p>
                   <b>Source:</b>{" "}
-                  DIGITAL_SIMULATOR
+                  {incident.source ||
+                    "DIGITAL_SIMULATOR"}
+                </p>
+
+                <p>
+                  <b>Latitude:</b>{" "}
+                  {incident.latitude ??
+                    "Not available"}
+                </p>
+
+                <p>
+                  <b>Longitude:</b>{" "}
+                  {incident.longitude ??
+                    "Not available"}
                 </p>
 
               </div>
+
             ) : (
+
               <div className="empty-state">
 
                 <div className="empty-icon">
                   🛡️
                 </div>
 
-                <h4>No Active Incidents</h4>
+                <h4>
+                  No Active Incidents
+                </h4>
 
                 <p>
-                  Emergency incidents created by the wearable
-                  will appear here.
+                  Emergency incidents created by
+                  the wearable will appear here.
                 </p>
 
               </div>
+
             )}
+
           </div>
 
           {/* System Pipeline */}
           <div className="panel">
 
-            <h3>System Pipeline</h3>
+            <h3>
+              System Pipeline
+            </h3>
 
             <div className="pipeline">
 
@@ -233,7 +333,19 @@ function App() {
               <span>↓</span>
 
               <div>
+                SOS Event
+              </div>
+
+              <span>↓</span>
+
+              <div>
                 FastAPI Backend
+              </div>
+
+              <span>↓</span>
+
+              <div>
+                GPS Location
               </div>
 
               <span>↓</span>
@@ -261,6 +373,7 @@ function App() {
         </section>
 
       </main>
+
     </div>
   );
 }
