@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Float
+from sqlalchemy import Column, Integer, String, DateTime, Float, Boolean
 from datetime import datetime
 from database import Base
 
@@ -25,6 +25,11 @@ class Incident(Base):
         nullable=False
     )
 
-    # Simulated GPS location
+    # Simulated GPS
     latitude = Column(Float, nullable=True)
     longitude = Column(Float, nullable=True)
+
+    # Simulated motion sensor data
+    acceleration = Column(Float, nullable=True)
+    gyro = Column(Float, nullable=True)
+    fall_detected = Column(Boolean, nullable=True)

@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from datetime import datetime
@@ -12,13 +12,13 @@ from models import Incident
 Base.metadata.create_all(bind=engine)
 
 
-# Create FastAPI application
+# FastAPI application
 app = FastAPI(
     title="Secure Intelligent Wearable API"
 )
 
 
-# CORS configuration for React/Vite frontend
+# CORS configuration
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -33,23 +33,28 @@ app.add_middleware(
 )
 
 
-# -----------------------------
+# ---------------------------------
 # Request Models
-# -----------------------------
+# ---------------------------------
 
 class SOSRequest(BaseModel):
     source: str
 
 
 class LocationRequest(BaseModel):
-    # Simulated GPS coordinates with validation
     latitude: float = Field(..., ge=-90, le=90)
     longitude: float = Field(..., ge=-180, le=180)
 
 
-# -----------------------------
+class MotionRequest(BaseModel):
+    acceleration: float = Field(..., ge=0, le=100)
+    gyro: float = Field(..., ge=0, le=1000)
+    fall_detected: bool
+
+
+# ---------------------------------
 # Database Dependency
-# -----------------------------
+# ---------------------------------
 
 def get_db():
     db = SessionLocal()
@@ -60,9 +65,9 @@ def get_db():
         db.close()
 
 
-# -----------------------------
-# Root Endpoint
-# -----------------------------
+# ---------------------------------
+# Root
+# ---------------------------------
 
 @app.get("/")
 def root():
@@ -71,15 +76,19 @@ def root():
     }
 
 
-# -----------------------------
+# ---------------------------------
 # Get All Incidents
-# -----------------------------
+# ---------------------------------
 
 @app.get("/api/incidents")
 def get_incidents(
     db: Session = Depends(get_db)
 ):
-    incidents = db.query(Incident).all()
+    incidents = (
+        db.query(Incident)
+        .order_by(Incident.id.asc())
+        .all()
+    )
 
     return [
         {
@@ -89,16 +98,23 @@ def get_incidents(
             "status": incident.status,
             "source": incident.source,
             "created_at": incident.created_at,
+
+            # GPS
             "latitude": incident.latitude,
-            "longitude": incident.longitude
+            "longitude": incident.longitude,
+
+            # Motion
+            "acceleration": incident.acceleration,
+            "gyro": incident.gyro,
+            "fall_detected": incident.fall_detected
         }
         for incident in incidents
     ]
 
 
-# -----------------------------
+# ---------------------------------
 # Create SOS Incident
-# -----------------------------
+# ---------------------------------
 
 @app.post("/api/incidents/sos")
 def create_sos(
@@ -138,9 +154,9 @@ def create_sos(
     }
 
 
-# -----------------------------
-# Update Incident Location
-# -----------------------------
+# ---------------------------------
+# Update GPS Location
+# ---------------------------------
 
 @app.post("/api/incidents/{incident_id}/location")
 def update_location(
@@ -157,12 +173,11 @@ def update_location(
     )
 
     if not incident:
-        return {
-            "success": False,
-            "message": "Incident not found"
-        }
+        raise HTTPException(
+            status_code=404,
+            detail="Incident not found"
+        )
 
-    # Store simulated GPS coordinates
     incident.latitude = request.latitude
     incident.longitude = request.longitude
 
@@ -174,4 +189,54 @@ def update_location(
         "incident_id": incident.incident_id,
         "latitude": incident.latitude,
         "longitude": incident.longitude
+    }
+
+
+# ---------------------------------
+# Update Motion / Fall Data
+# ---------------------------------
+
+@app.post("/api/incidents/{incident_id}/motion")
+def update_motion(
+    incident_id: str,
+    request: MotionRequest,
+    db: Session = Depends(get_db)
+):
+    incident = (
+        db.query(Incident)
+        .filter(
+            Incident.incident_id == incident_id
+        )
+        .first()
+    )
+
+    if not incident:
+        raise HTTPException(
+            status_code=404,
+            detail="Incident not found"
+        )
+
+    # Store simulated sensor readings
+    incident.acceleration = request.acceleration
+    incident.gyro = request.gyro
+    incident.fall_detected = request.fall_detected
+
+    db.commit()
+    db.refresh(incident)
+
+    if request.fall_detected:
+        risk_level = "HIGH"
+        reason = "Fall event detected"
+    else:
+        risk_level = "LOW"
+        reason = "Normal motion detected"
+
+    return {
+        "success": True,
+        "incident_id": incident.incident_id,
+        "acceleration": incident.acceleration,
+        "gyro": incident.gyro,
+        "fall_detected": incident.fall_detected,
+        "risk_level": risk_level,
+        "reason": reason
     }
